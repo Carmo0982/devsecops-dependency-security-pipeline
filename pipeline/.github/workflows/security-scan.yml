@@ -1,0 +1,61 @@
+name: Security Scan - Dependency Check
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/requirements.txt'
+      - '**/Pipfile'
+      - '**/pyproject.toml'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install safety
+      run: pip install safety==2.3.5
+    
+    - name: Find requirements files
+      id: find-files
+      run: |
+        echo "files=$(find . -name 'requirements.txt' -type f | tr '\n' ' ')" >> $GITHUB_OUTPUT
+    
+    - name: Scan dependencies
+      run: |
+        FAILED=0
+        for file in ${{ steps.find-files.outputs.files }}; do
+          echo "Scanning: $file"
+          python -m safety check -r "$file" --json
+          if [ $? -ne 0 ]; then
+            FAILED=1
+            echo "Vulnerabilities found in $file"
+          fi
+        done
+        
+        if [ $FAILED -eq 1 ]; then
+          echo "::error::Se encontraron vulnerabilidades criticas"
+          exit 1
+        fi
+        
+        echo "No se encontraron vulnerabilidades"
+    
+    - name: Upload scan report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-scan-report
+        path: |
+          *.json
+          scan_report.txt
