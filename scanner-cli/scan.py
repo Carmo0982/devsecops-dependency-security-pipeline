@@ -8,7 +8,7 @@ from datetime import datetime
 def scan_requirements(file_path):
     if not os.path.exists(file_path):
         print(f"Error: El archivo {file_path} no existe")
-        return None
+        return None, "missing_file"
     
     print(f"Escaneando: {file_path}")
     print("-" * 50)
@@ -24,33 +24,27 @@ def scan_requirements(file_path):
         if result.stdout:
             try:
                 data = json.loads(result.stdout)
+                items = data if isinstance(data, list) else data.get('vulnerabilities', [])
                 
-                if isinstance(data, list):
-                    for vuln in data:
-                        vulnerabilities.append({
-                            'package': vuln.get('package_name', 'unknown'),
-                            'version': vuln.get('installed_version', 'unknown'),
-                            'cve': vuln.get('vulnerability_id', 'unknown'),
-                            'severity': vuln.get('severity', 'unknown'),
-                            'description': vuln.get('description', '')[:100]
-                        })
-                else:
-                    for vuln in data.get('vulnerabilities', []):
-                        vulnerabilities.append({
-                            'package': vuln.get('package_name', 'unknown'),
-                            'version': vuln.get('installed_version', 'unknown'),
-                            'cve': vuln.get('vulnerability_id', 'unknown'),
-                            'severity': vuln.get('severity', 'unknown'),
-                            'description': vuln.get('description', '')[:100]
-                        })
+                for vuln in items:
+                    vulnerabilities.append({
+                        'package': vuln.get('package_name', 'unknown'),
+                        'version': vuln.get('installed_version', 'unknown'),
+                        'cve': vuln.get('vulnerability_id', 'unknown'),
+                        'severity': vuln.get('severity', 'unknown'),
+                        'description': vuln.get('description', '')[:100]
+                    })
             except json.JSONDecodeError:
-                pass
+                return None, "invalid_output"
+
+        if result.returncode not in (0, 1, 64):
+            return None, result.stderr.strip() or 'safety_failed'
         
-        return vulnerabilities
+        return vulnerabilities, None
         
     except Exception as e:
         print(f"Error durante el escaneo: {e}")
-        return None
+        return None, "exception"
 
 def print_report(vulnerabilities, file_path):
     print("\n" + "=" * 60)
@@ -89,9 +83,14 @@ def main():
     
     args = parser.parse_args()
     
-    vulnerabilities = scan_requirements(args.file)
+    vulnerabilities, error = scan_requirements(args.file)
     
+    if error == "missing_file":
+        sys.exit(1)
+
     if vulnerabilities is None:
+        if error and error != "missing_file":
+            print(f"Error: {error}")
         sys.exit(1)
     
     if args.json:
@@ -105,6 +104,8 @@ def main():
     
     if args.fail_on_vuln and vulnerabilities:
         sys.exit(1)
+    elif error:
+        sys.exit(2)
     else:
         sys.exit(0)
 

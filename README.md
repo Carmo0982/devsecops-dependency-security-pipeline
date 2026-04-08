@@ -11,6 +11,7 @@ Sistema de análisis de dependencias seguras integrado en un pipeline DevSecOps 
 - [Requisitos Previos](#requisitos-previos)
 - [Instalación](#instalación)
 - [Backend API](#backend-api)
+- [Frontend Demo](#frontend-demo)
 - [Scanner CLI](#scanner-cli)
 - [Pipeline CI/CD](#pipeline-cicd)
 - [Pruebas del Sistema](#pruebas-del-sistema)
@@ -27,8 +28,10 @@ Este proyecto implementa un sistema automatizado de análisis de vulnerabilidade
 ### Características Principales
 
 - API REST para escaneo de dependencias
+- Frontend web para consumir la API de escaneo
 - Scanner CLI para ejecución local
-- Integración con GitHub Actions, GitLab CI/CD y Jenkins
+- Integración principal con GitHub Actions
+- Soporte adicional para GitLab CI/CD y Jenkins
 - Detección temprana de vulnerabilidades
 - Bloqueo automático del pipeline si se encuentran vulnerabilidades críticas
 - Reportes detallados en formato texto y JSON
@@ -36,19 +39,21 @@ Este proyecto implementa un sistema automatizado de análisis de vulnerabilidade
 ## Estructura del Proyecto
 devsecops-dependency-security-pipeline/
 ├── backend/
-│ ├── app_simple.py # API REST para escaneo de dependencias
-│ └── test.txt # Archivo de prueba con dependencias vulnerables
+│ ├── app_simple.py # API REST simple para escaneo de dependencias
+│ └── app/ # Backend modular reutilizable
+├── frontend/
+│ ├── index.html # Interfaz web del prototipo
+│ ├── styles.css # Estilos de la interfaz
+│ └── app.js # Llamadas a la API y render de resultados
 ├── scanner-cli/
 │ └── scan.py # Scanner CLI para ejecución local
 ├── pipeline/
 │ ├── .github/workflows/
-│ │ └── security-scan.yml # GitHub Actions workflow
-│ ├── .gitlab-ci.yml # GitLab CI/CD pipeline
+│ │ └── security-scan.yml # Workflow principal de GitHub Actions
+│ ├── .gitlab-ci.yml # Pipeline alternativo de GitLab CI/CD
 │ └── jenkins/
-│ └── Jenkinsfile # Jenkins pipeline
+│ └── Jenkinsfile.yml # Jenkins pipeline de apoyo
 └── README.md
-
-text
 
 ## Requisitos Previos
 
@@ -56,6 +61,38 @@ text
 - pip (gestor de paquetes de Python)
 - Git (opcional, para control de versiones)
 - Acceso a internet para instalar dependencias
+
+## Frontend Demo
+
+El frontend del prototipo vive en `frontend/` y se conecta al backend Flask por HTTP.
+
+### Ejecutar en local
+
+1. Levantar backend:
+
+```bash
+cd backend
+python app_simple.py
+```
+
+2. En otra terminal, levantar servidor estatico para el frontend:
+
+```bash
+cd frontend
+python3 -m http.server 5500
+```
+
+3. Abrir en el navegador:
+
+```text
+http://localhost:5500
+```
+
+4. Verificar que la Base URL de la UI sea:
+
+```text
+http://localhost:5001
+```
 
 ## Instalación
 
@@ -83,7 +120,7 @@ Iniciar el servidor
 bash
 cd backend
 python app_simple.py
-El servidor se iniciará en http://localhost:5000
+El servidor se iniciará en http://localhost:5001
 
 Endpoints disponibles
 Método	Endpoint	Descripción
@@ -111,10 +148,18 @@ json
       "package": "requests",
       "version": "2.20.0",
       "cve": "58755",
-      "severity": null,
-      "description": ""
+      "severity": "unknown",
+      "description": "...",
+      "fixed_version": "2.31.0"
     }
   ]
+}
+Respuesta con error del escaneo:
+
+json
+{
+  "status": "error",
+  "error": "Safety falló durante el análisis"
 }
 Scanner CLI
 El scanner CLI permite ejecutar análisis de dependencias directamente desde la línea de comandos.
@@ -153,6 +198,8 @@ echo $?
 
 1 = Vulnerabilidades encontradas (fallo)
 
+2 = Error técnico del escaneo
+
 Ejemplo de salida del scanner
 text
 ============================================================
@@ -184,7 +231,7 @@ Recomendacion: Actualizar las dependencias vulnerables
 ============================================================
 Pipeline CI/CD
 GitHub Actions
-El workflow se ejecuta automáticamente cuando:
+El workflow es el principal del proyecto y se ejecuta automáticamente cuando:
 
 Se hace push a las ramas main o develop
 
@@ -217,6 +264,8 @@ jobs:
 GitLab CI/CD
 Archivo: .gitlab-ci.yml
 
+Este pipeline se conserva como alternativa compatible.
+
 El pipeline incluye las etapas:
 
 security-scan - Escaneo de dependencias
@@ -235,6 +284,8 @@ Ejecución automática en merge requests
 
 Jenkins Pipeline
 Archivo: jenkins/Jenkinsfile
+
+Este pipeline también se conserva como apoyo para demostrar portabilidad.
 
 Características:
 
@@ -269,6 +320,8 @@ echo "flask==2.3.0" > safe.txt
 python scan.py safe.txt
 Resultado esperado: PASSED sin vulnerabilidades
 
+Nota: si el scanner falla por un problema técnico, el resultado debe ser ERROR y no PASSED.
+
 Prueba 3: Probar el backend API
 Iniciar el servidor:
 
@@ -278,9 +331,9 @@ python app_simple.py
 En otra terminal, probar los endpoints:
 
 bash
-curl http://localhost:5000/health
-curl http://localhost:5000/scan-example
-curl http://localhost:5000/scan-local
+curl http://localhost:5001/health
+curl http://localhost:5001/scan-example
+curl http://localhost:5001/scan-local
 Prueba 4: Verificar código de salida
 bash
 python scan.py ../backend/test.txt --fail-on-vuln
@@ -295,7 +348,7 @@ Ejemplo 2: Usar la API para escanear desde otro programa
 python
 import requests
 
-url = "http://localhost:5000/scan"
+url = "http://localhost:5001/scan"
 files = {"file": open("requirements.txt", "rb")}
 response = requests.post(url, files=files)
 print(response.json())
@@ -316,6 +369,12 @@ Copiar scanner-cli/scan.py a tu proyecto
 Instalar safety: pip install safety
 
 Ejecutar: python scan.py requirements.txt
+
+Salida esperada:
+
+0 = sin vulnerabilidades
+1 = vulnerabilidades encontradas
+2 = error del scanner
 
 Opción 2: Usar la API
 Copiar la carpeta backend/ a tu proyecto

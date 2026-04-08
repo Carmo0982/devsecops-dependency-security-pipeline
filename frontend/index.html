@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dependency Shield Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <p class="kicker">DevSecOps Monitor</p>
+      <h1>Dependency Shield Console</h1>
+      <p class="subtitle">Escanea dependencias y valida el estado de seguridad antes de desplegar.</p>
+    </header>
+
+    <section class="panel grid-2">
+      <div class="card">
+        <h2>Conexion API</h2>
+        <label for="apiBase">Base URL backend</label>
+        <input id="apiBase" type="text" value="http://localhost:5001" />
+        <div class="actions">
+          <button id="btnHealth" class="btn btn-secondary">Probar /health</button>
+          <button id="btnLocal" class="btn btn-secondary">Escanear /scan-local</button>
+          <button id="btnExample" class="btn btn-secondary">Escanear /scan-example</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Escaneo Archivo</h2>
+        <label for="fileInput">requirements.txt</label>
+        <input id="fileInput" type="file" accept=".txt" />
+        <div class="actions">
+          <button id="btnUpload" class="btn btn-primary">Subir y escanear</button>
+        </div>
+        <p class="hint">Se enviara al endpoint /scan como multipart form-data.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="status-row">
+        <h2>Resultado</h2>
+        <span id="statusBadge" class="badge">SIN EJECUCION</span>
+      </div>
+      <pre id="output" class="output">Esperando ejecucion...</pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

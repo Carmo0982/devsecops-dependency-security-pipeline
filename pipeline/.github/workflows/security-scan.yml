@@ -30,20 +30,39 @@ jobs:
     - name: Find requirements files
       id: find-files
       run: |
-        echo "files=$(find . -name 'requirements.txt' -type f | tr '\n' ' ')" >> $GITHUB_OUTPUT
+        echo "files=$(find . \
+          \( -path '*/venv' -o -path '*/venv/*' -o -path '*/.venv' -o -path '*/.venv/*' \) -prune -o \
+          -name 'requirements.txt' -type f -print | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+    - name: Prepare report folder
+      run: mkdir -p security-reports
     
     - name: Scan dependencies
       run: |
         FAILED=0
+        ERROR=0
         for file in ${{ steps.find-files.outputs.files }}; do
           echo "Scanning: $file"
-          python -m safety check -r "$file" --json
-          if [ $? -ne 0 ]; then
+          REPORT_NAME=$(echo "$file" | tr '/ ' '__' | tr -cd '[:alnum:]_.-')
+          set +e
+          python -m safety check -r "$file" --json > "security-reports/${REPORT_NAME}.json"
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -eq 1 ] || [ $EXIT_CODE -eq 64 ]; then
             FAILED=1
             echo "Vulnerabilities found in $file"
+          elif [ $EXIT_CODE -ne 0 ]; then
+            ERROR=1
+            echo "Error scanning $file"
           fi
         done
         
+        if [ $ERROR -eq 1 ]; then
+          echo "::error::Falló el escaneo de dependencias"
+          exit 1
+        fi
+
         if [ $FAILED -eq 1 ]; then
           echo "::error::Se encontraron vulnerabilidades criticas"
           exit 1
@@ -57,5 +76,4 @@ jobs:
       with:
         name: security-scan-report
         path: |
-          *.json
-          scan_report.txt
+          security-reports/*.json
