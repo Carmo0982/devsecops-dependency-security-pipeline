@@ -4,6 +4,8 @@ import subprocess
 import json
 import os
 import sys
+import time
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -14,38 +16,53 @@ os.makedirs(os.path.join(BACKEND_DIR, 'uploads'), exist_ok=True)
 
 
 def _run_safety_scan(file_path):
-    """Ejecuta safety y devuelve vulnerabilidades o una señal de error."""
     result = subprocess.run(
         [python_executable, '-m', 'safety', 'check', '-r', file_path, '--json'],
         capture_output=True, text=True
     )
+    
+    output = result.stdout
+    
+    if not output:
+        return None, "Safety no produjo salida"
+    
+    json_match = re.search(r'\{[\s\S]*\}', output)
+    
+    if not json_match:
+        return None, "No se encontró JSON en la salida de safety"
+    
+    clean_output = json_match.group()
+    
+    try:
+        data = json.loads(clean_output)
+        
+        vulnerabilities = []
+        
+        if 'vulnerabilities' in data:
+            items = data['vulnerabilities']
+        else:
+            items = []
+        
+        for vuln in items:
+            vulnerabilities.append({
+                'package': vuln.get('package_name', 'unknown'),
+                'version': vuln.get('analyzed_version', 'unknown'),
+                'cve': vuln.get('CVE', vuln.get('vulnerability_id', 'unknown')),
+                'severity': vuln.get('severity', 'medium'),
+                'fixed_version': vuln.get('fixed_versions', [None])[0] if vuln.get('fixed_versions') else None,
+                'description': vuln.get('advisory', 'No description available')[:200]
+            })
+        
+        return vulnerabilities, None
+        
+    except json.JSONDecodeError as e:
+        return None, f"Error parseando JSON: {str(e)}"
 
-    vulnerabilities = []
-    if result.stdout:
-        try:
-            data = json.loads(result.stdout)
-            items = data if isinstance(data, list) else data.get('vulnerabilities', [])
-
-            for vuln in items:
-                vulnerabilities.append({
-                    'package': vuln.get('package_name', 'unknown'),
-                    'version': vuln.get('installed_version', 'unknown'),
-                    'cve': vuln.get('vulnerability_id', 'unknown'),
-                    'severity': vuln.get('severity', 'unknown'),
-                    'fixed_version': vuln.get('fixed_versions', [None])[0] if vuln.get('fixed_versions') else None
-                })
-        except json.JSONDecodeError:
-            return None, 'No se pudo interpretar la salida de safety'
-
-    # safety puede devolver 64 cuando encuentra vulnerabilidades.
-    if result.returncode not in (0, 1, 64):
-        return None, result.stderr.strip() or 'Safety falló durante el análisis'
-
-    return vulnerabilities, None
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'message': 'Backend funcionando'})
+
 
 @app.route('/', methods=['GET'])
 def index():
@@ -60,6 +77,7 @@ def index():
         },
         'frontend_hint': 'El frontend se sirve por separado (por ejemplo http://localhost:5500).'
     }), 200
+
 
 @app.route('/scan-example', methods=['GET'])
 def scan_example():
@@ -79,16 +97,29 @@ def scan_example():
         }), 422 if vulnerabilities else 200
     finally:
         if os.path.exists(example_path):
-            os.remove(example_path)
+            time.sleep(0.1)
+            try:
+                os.remove(example_path)
+            except:
+                pass
+
 
 @app.route('/scan-local', methods=['GET'])
 def scan_local():
-    test_file_path = os.path.join(BACKEND_DIR, 'test.txt')
+    possible_files = ['demo_vulnerable.txt', 'test.txt', 'requirements.txt']
+    test_file_path = None
     
-    if not os.path.exists(test_file_path):
+    for filename in possible_files:
+        filepath = os.path.join(BACKEND_DIR, filename)
+        if os.path.exists(filepath):
+            test_file_path = filepath
+            break
+    
+    if not test_file_path:
         return jsonify({
-            'error': f'El archivo test.txt no existe en {BACKEND_DIR}',
-            'expected_path': test_file_path
+            'error': 'No se encontro archivo para escanear',
+            'expected_files': possible_files,
+            'backend_dir': BACKEND_DIR
         }), 404
     
     try:
@@ -105,6 +136,7 @@ def scan_local():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/scan', methods=['POST'])
 def scan():
     filepath = None
@@ -118,6 +150,7 @@ def scan():
         
         filepath = os.path.join(BACKEND_DIR, 'uploads', file.filename)
         file.save(filepath)
+        
         vulnerabilities, error = _run_safety_scan(filepath)
         if error:
             return jsonify({'status': 'error', 'error': error}), 500
@@ -131,7 +164,12 @@ def scan():
         return jsonify({'error': str(e)}), 500
     finally:
         if filepath and os.path.exists(filepath):
-            os.remove(filepath)
+            time.sleep(0.1)
+            try:
+                os.remove(filepath)
+            except:
+                pass
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '5001'))
@@ -143,7 +181,7 @@ if __name__ == '__main__':
     print('Endpoints disponibles:')
     print('  GET  /health       - Verificar estado')
     print('  GET  /scan-example - Escanear ejemplo vulnerable')
-    print('  GET  /scan-local   - Escanear test.txt de la carpeta backend')
+    print('  GET  /scan-local   - Escanear archivo local')
     print('  POST /scan         - Subir y escanear archivo')
     print('=' * 50)
     app.run(debug=True, host='0.0.0.0', port=port)
